@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lite Spaceflight Sim - Phase 4.2 (Fixes)</title>
+    <title>Lite Spaceflight Sim - Phase 4.3 (Typo Fix)</title>
     <style>
         body, html {
             margin: 0;
@@ -42,7 +42,7 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // --- 2. PHYSICS & SCALING ---
+        // --- 2. PHYSICS & SCALING (Untouched) ---
         const GM_EARTH = 3.986004418e14 / 16.0;
         const GM_MOON = 4.9048695e12 / 16.0;
         const EARTH_RADIUS = 6371000 / 4;
@@ -53,8 +53,7 @@
         const SHIP_HEIGHT = 10;
         const SHIP_WIDTH = 5;
         
-        // --- YOUR CHANGE ---
-        const SAFE_LANDING_SPEED = 20.0; // Was 5.0
+        const SAFE_LANDING_SPEED = 20.0;
         
         const MAX_ZOOM = 1.0;
         const MIN_ZOOM = 0.0000001;
@@ -83,7 +82,7 @@
             ArrowLeft: false,
             ArrowRight: false,
             '=': false,
-            '-: false,
+            '-': false,
             '[': false,
             ']': false,
         };
@@ -234,11 +233,10 @@
             hud.innerHTML = `Altitude (Earth): ${altitude} m<br>Velocity: ${velocity} m/s<br>Time Warp: ${timeWarpLevels[timeWarpIndex]}x`;
         }
         
-        // --- TRAJECTORY FUNCTION ---
+        // --- TRAJECTORY FUNCTION (Untouched) ---
         
-        // --- YOUR CHANGES ---
-        const PREDICTION_STEPS = 1000; // Was 100 (Makes line longer)
-        const PREDICTION_STEP_TIME = 2; // Was 5 (Makes line smoother)
+        const PREDICTION_STEPS = 1000;
+        const PREDICTION_STEP_TIME = 2;
         
         function drawTrajectory(ctx, ship) {
             // UNTOUCHED
@@ -280,7 +278,7 @@
         }
         // ---------------------------------
 
-        // --- 7. DRAW FUNCTION (Untouched) ---
+        // --- 7. DRAW FUNCTION ---
         function draw() {
             // UNTOUCHED
             ctx.fillStyle = '#000';
@@ -308,7 +306,9 @@
 
             // Draw the Ship
             ctx.save();
-            ctx.translate(ship.x, ship.Y);
+            // --- THIS IS THE FIX ---
+            ctx.translate(ship.x, ship.y); // Was ship.Y
+            // -----------------------
             ctx.rotate(ship.angle); 
             ctx.lineWidth = 1 / camera.zoom; 
             ctx.beginPath();
