@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lite Spaceflight Sim - Phase 3.1</title>
+    <title>Lite Spaceflight Sim - Phase 3.3 (Controls Reverted)</title>
     <style>
         body, html {
             margin: 0;
@@ -44,25 +44,28 @@
         canvas.height = window.innerHeight;
 
         // --- 2. REAL-WORLD PHYSICS & SFS SCALING ---
-        const GM_EARTH = 3.986004418e14; // m^3/s^2
-        const GM_MOON = 4.9048695e12; // m^3/s^2
+        const GM_EARTH = 3.986004418e14;
+        const GM_MOON = 4.9048695e12;
 
         const EARTH_RADIUS = 6371000 / 4; // 1,592,750 m
         const MOON_RADIUS = 1737000 / 4;  // 434,250 m
         const MOON_DISTANCE = 384400000 / 4; // 96,100,000 m
 
         const SHIP_THRUST_ACCEL = 25.0; // m/s^2
-        const SHIP_ROTATION_SPEED = 3.0; // degrees per second
+        
+        // --- FIX: Increased rotation speed ---
+        const SHIP_ROTATION_SPEED = 90.0; // degrees per second (was 3.0)
+        
         const SHIP_HEIGHT = 10; // meters
         const SHIP_WIDTH = 5;   // meters
         const SAFE_LANDING_SPEED = 5.0; // m/s
         
-        // --- FIX: ZOOM LIMITS ---
-        const MAX_ZOOM = 1.0;     // 1 pixel = 1 meter
-        const MIN_ZOOM = 0.0000001; // 1 pixel = 10,000,000 meters
+        // --- KEPT FIX: ZOOM LIMITS ---
+        const MAX_ZOOM = 1.0;
+        const MIN_ZOOM = 0.0000001;
 
         // --- 3. GAME OBJECTS (Positions in METERS) ---
-        let ship = {};
+        let ship = {}; // Will be set by resetShip()
         const earth = {
             x: 0, y: 0,
             radius: EARTH_RADIUS,
@@ -77,7 +80,7 @@
         const camera = {
             x: 0,
             y: 0,
-            zoom: 0.0002 // 1 pixel = 5000 meters (Good starting zoom)
+            zoom: 0.0002
         };
 
         // --- 4. CONTROLS & TIME ---
@@ -85,10 +88,10 @@
             ArrowUp: false,
             ArrowLeft: false,
             ArrowRight: false,
-            '=': false, // Zoom in
-            '-': false, // Zoom out
-            '[': false, // Time warp down
-            ']': false, // Time warp up
+            '=': false,
+            '-': false,
+            '[': false,
+            ']': false,
         };
 
         const timeWarpLevels = [1, 5, 10, 50, 100, 500, 1000, 10000];
@@ -116,9 +119,7 @@
             const distSq = dx * dx + dy * dy;
             const dist = Math.sqrt(distSq);
             
-            // a = GM / r^2
             const accel = body.gm / distSq;
-            
             const ax = (dx / dist) * accel;
             const ay = (dy / dist) * accel;
 
@@ -141,65 +142,71 @@
             }
         }
         
+        // --- FIX: This function now orients the ship ---
         function landShip(ship, body) {
             ship.landedOn = body;
             ship.vx = 0;
             ship.vy = 0;
             
-            // "Stick" ship to surface and set correct angle
+            // "Stick" ship to surface
             const angleToBody = Math.atan2(ship.y - body.y, ship.x - body.x);
             ship.x = body.x + Math.cos(angleToBody) * body.radius;
             ship.y = body.y + Math.sin(angleToBody) * body.radius;
-            // --- FIX: Point ship "up" away from the planet center ---
-            ship.angle = angleToBody - Math.PI / 2;
+            
+            // --- This is the fix for "upside down" ---
+            // It points the ship "up" (Math.PI / 2) relative to the
+            // angle from the planet's core (angleToBody)
+            ship.angle = angleToBody + Math.PI / 2;
         }
 
         function resetShip() {
             ship = {
                 x: 0,
-                y: -EARTH_RADIUS, // Start ON the Earth's surface
+                y: -EARTH_RADIUS, // Start at the coordinates
                 vx: 0,
                 vy: 0,
-                // --- FIX: Start angle 0 (points "up" along -Y axis) ---
-                angle: 0, 
+                angle: 0, // Angle doesn't matter, landShip will fix it
                 isThrusting: false,
-                landedOn: null // Will be set by checkLanding on first frame
+                landedOn: null
             };
+            // --- FIX: Call landShip on reset ---
+            // This sticks the ship to the ground and orients it.
+            landShip(ship, earth); 
             timeWarpIndex = 0;
         }
 
         // --- 6. UPDATE FUNCTION ---
+        // --- REVERTED: This is the original Phase 3 logic ---
         function update(dt) {
             // Handle Zoom
-            // --- FIX: Clamp zoom levels ---
-            if (keys['=']) camera.zoom *= 1.02; // Zoom in
-            if (keys['-']) camera.zoom /= 1.02; // Zoom out
+            if (keys['=']) camera.zoom *= 1.02;
+            if (keys['-']) camera.zoom /= 1.02;
             camera.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.zoom));
 
             if (ship.landedOn) {
-                // --- FIX: Correct rotation direction ---
-                if (keys.ArrowLeft) { // Counter-clockwise
+                // Landed controls
+                if (keys.ArrowLeft) {
                     ship.angle -= (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
                 }
-                if (keys.ArrowRight) { // Clockwise
+                if (keys.ArrowRight) {
                     ship.angle += (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
                 }
+                
                 ship.isThrusting = false;
                 if (keys.ArrowUp) {
                     // TAKEOFF
                     ship.landedOn = null; 
                     ship.isThrusting = true;
-                    // --- FIX: Correct thrust logic ---
-                    // sin(angle) for X, -cos(angle) for Y
-                    const accel_x = Math.sin(ship.angle) * SHIP_THRUST_ACCEL;
-                    const accel_y = -Math.cos(ship.angle) * SHIP_THRUST_ACCEL;
+                    // Apply thrust
+                    const accel_x = Math.cos(ship.angle - Math.PI / 2) * SHIP_THRUST_ACCEL;
+                    const accel_y = Math.sin(ship.angle - Math.PI / 2) * SHIP_THRUST_ACCEL;
                     ship.vx += accel_x * dt;
                     ship.vy += accel_y * dt;
                 }
             } else {
                 // --- IN-FLIGHT LOGIC ---
                 
-                // --- FIX: Correct rotation direction ---
+                // Rotation
                 if (keys.ArrowLeft) {
                     ship.angle -= (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
                 }
@@ -207,12 +214,12 @@
                     ship.angle += (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
                 }
 
+                // Thrust
                 ship.isThrusting = false;
                 if (keys.ArrowUp) {
                     ship.isThrusting = true;
-                    // --- FIX: Correct thrust logic ---
-                    const accel_x = Math.sin(ship.angle) * SHIP_THRUST_ACCEL;
-                    const accel_y = -Math.cos(ship.angle) * SHIP_THRUST_ACCEL;
+                    const accel_x = Math.cos(ship.angle - Math.PI / 2) * SHIP_THRUST_ACCEL;
+                    const accel_y = Math.sin(ship.angle - Math.PI / 2) * SHIP_THRUST_ACCEL;
                     ship.vx += accel_x * dt;
                     ship.vy += accel_y * dt;
                 }
@@ -224,7 +231,7 @@
                 ship.x += ship.vx * dt;
                 ship.y += ship.vy * dt;
 
-                // Check for landing/crashing
+                // Check for landing
                 checkLanding(ship, earth, distToEarth, dt);
                 checkLanding(ship, moon, distToMoon, dt);
             }
@@ -245,7 +252,6 @@
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.scale(camera.zoom, camera.zoom);
             
-            // Center camera on ship
             camera.x = ship.x;
             camera.y = ship.y;
             ctx.translate(-camera.x, -camera.y);
@@ -267,12 +273,14 @@
             // Draw the Ship
             ctx.save();
             ctx.translate(ship.x, ship.y);
-            ctx.rotate(ship.angle);
+            // --- REVERTED: Using the original Phase 3 drawing logic ---
+            // (Note: The DRAW logic and PHYSICS logic are mismatched,
+            // which creates the "feel" you liked)
+            ctx.rotate(ship.angle); 
             
-            // This line width is now safe because zoom is clamped
             ctx.lineWidth = 1 / camera.zoom; 
             
-            // Draw ship model (points "up")
+            // Draw ship model (points "up" along its Y-axis)
             ctx.beginPath();
             ctx.moveTo(0, -SHIP_HEIGHT / 2); // Nose
             ctx.lineTo(SHIP_WIDTH / 2, SHIP_HEIGHT / 2); // Back-right
@@ -285,7 +293,7 @@
             if (ship.isThrusting) {
                 ctx.beginPath();
                 ctx.moveTo(0, SHIP_HEIGHT / 2);
-                ctx.lineTo(-SHIP_WIDTH / 2, SHIP_HEIGHT / 2 + 7); // 7m long flame
+                ctx.lineTo(-SHIP_WIDTH / 2, SHIP_HEIGHT / 2 + 7);
                 ctx.lineTo(SHIP_WIDTH / 2, SHIP_HEIGHT / 2 + 7);
                 ctx.closePath();
                 ctx.fillStyle = 'orange';
@@ -317,7 +325,7 @@
         }
 
         // --- START THE GAME ---
-        resetShip(); 
+        resetShip(); // Call reset to land the ship
         lastTime = performance.now(); 
         requestAnimationFrame(gameLoop); 
 
