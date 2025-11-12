@@ -3,149 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lite Spaceflight Sim</title>
+    <title>Lite Spaceflight Sim - Phase 2</title>
     <style>
-        /* Basic CSS to make the game full-screen */
         body, html {
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background-color: #000; /* Black background for space */
+            background-color: #000;
         }
         canvas {
             display: block;
+        }
+        /* Style for the text overlay (our HUD) */
+        #hud {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+        Altitude: 0 m<br>
+        Velocity: 0 m/s
+    </div>
 
     <script>
-        // --- 1. SETUP THE CANVAS ---
+        // --- 1. SETUP ---
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const hud = document.getElementById('hud');
 
-        // Set canvas to full-screen
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // --- 2. THE SHIP OBJECT ---
-        // This object will hold all the info about our ship
+        // --- 2. SIMULATION SETTINGS (SCALED DOWN) ---
+        // These numbers are not realistic, but are scaled for a fun game.
+        const G = 0.05; // Gravitational constant (fudged for gameplay)
+        const EARTH_RADIUS = 1000; // Our "Earth" is 1000 pixels wide
+        const MOON_RADIUS = 270;   // Moon is smaller
+        const MOON_DISTANCE = 15000; // Moon is far away
+        const SHIP_THRUST = 0.15;
+        const SHIP_ROTATION_SPEED = 0.05;
+
+        // --- 3. GAME OBJECTS ---
         const ship = {
-            x: canvas.width / 2,  // Start in the middle
-            y: canvas.height / 2, // Start in the middle
-            vx: 0,                // Velocity X (starts at 0)
-            vy: 0,                // Velocity Y (starts at 0)
-            angle: -Math.PI / 2,  // Angle (points "up" by default)
-            rotationSpeed: 0.05,  // How fast it turns
-            thrustPower: 0.1,     // How fast it accelerates
+            x: 0,                 // We start at the "center" of the world
+            y: -EARTH_RADIUS - 50, // Spawn 50 pixels above Earth's surface
+            vx: 0,
+            vy: 0,
+            angle: -Math.PI / 2, // Points "up" relative to the world
             isThrusting: false
         };
 
-        // --- 3. KEYBOARD CONTROLS ---
+        const earth = {
+            x: 0,
+            y: 0,
+            radius: EARTH_RADIUS,
+            mass: 500000 // A massive object to create strong gravity
+        };
+
+        const moon = {
+            x: MOON_DISTANCE,
+            y: 0,
+            radius: MOON_RADIUS,
+            mass: 10000 // Less massive than Earth
+        };
+
+        // The camera will try to follow the ship
+        const camera = {
+            x: 0,
+            y: 0,
+            // We'll add zoom later, for now it's fixed
+        };
+
+        // --- 4. KEYBOARD CONTROLS ---
         const keys = {
             ArrowUp: false,
             ArrowLeft: false,
-            ArrowRight: false
+            ArrowRight: false,
+            // We'll add time warp keys later
         };
 
-        // Listen for key presses
         window.addEventListener('keydown', (e) => {
-            if (e.key in keys) {
-                keys[e.key] = true;
-            }
+            if (e.key in keys) keys[e.key] = true;
         });
-
-        // Listen for key releases
         window.addEventListener('keyup', (e) => {
-            if (e.key in keys) {
-                keys[e.key] = false;
-            }
+            if (e.key in keys) keys[e.key] = false;
         });
 
-        // --- 4. THE UPDATE FUNCTION (The "Physics Engine") ---
+        // --- 5. PHYSICS FUNCTIONS ---
+        function applyGravity(ship, body) {
+            // Standard gravity formula: F = G * (m1*m2) / r^2
+            // We simplify since ship's mass is 1. F = G * M / r^2
+            
+            const dx = body.x - ship.x;
+            const dy = body.y - ship.y;
+            const distSq = dx * dx + dy * dy; // Distance squared
+            const dist = Math.sqrt(distSq);
+            
+            // Calculate force and acceleration
+            const force = G * body.mass / distSq;
+            const ax = (dx / dist) * force; // Acceleration X
+            const ay = (dy / dist) * force; // Acceleration Y
+
+            // Apply acceleration to ship's velocity
+            ship.vx += ax;
+            ship.vy += ay;
+            
+            return dist; // Return distance for other calculations (like HUD)
+        }
+
+        // --- 6. UPDATE FUNCTION (THE "ENGINE") ---
         function update() {
-            // A. Handle Rotation
+            // A. Handle Ship Controls
             if (keys.ArrowLeft) {
-                ship.angle -= ship.rotationSpeed;
+                ship.angle -= SHIP_ROTATION_SPEED;
             }
             if (keys.ArrowRight) {
-                ship.angle += ship.rotationSpeed;
+                ship.angle += SHIP_ROTATION_SPEED;
             }
 
-            // B. Handle Thrust
             ship.isThrusting = false;
             if (keys.ArrowUp) {
                 ship.isThrusting = true;
-                // Apply thrust in the direction the ship is facing
-                // Math.cos(angle) gives the X part of the direction
-                // Math.sin(angle) gives the Y part of the direction
-                ship.vx += Math.cos(ship.angle) * ship.thrustPower;
-                ship.vy += Math.sin(ship.angle) * ship.thrustPower;
+                ship.vx += Math.cos(ship.angle) * SHIP_THRUST;
+                ship.vy += Math.sin(ship.angle) * SHIP_THRUST;
             }
 
-            // C. Apply Velocity (Move the ship)
+            // B. Apply Physics
+            // We calculate gravity from both Earth and Moon
+            let distToEarth = applyGravity(ship, earth);
+            let distToMoon = applyGravity(ship, moon);
+
+            // C. Move the Ship
             ship.x += ship.vx;
             ship.y += ship.vy;
 
-            // D. Handle Screen Wrapping (like in 'Asteroids')
-            if (ship.x < 0) ship.x = canvas.width;
-            if (ship.x > canvas.width) ship.x = 0;
-            if (ship.y < 0) ship.y = canvas.height;
-            if (ship.y > canvas.height) ship.y = 0;
+            // D. Collision Detection (Simple)
+            if (distToEarth < earth.radius) {
+                // Crashed on Earth
+                resetShip(); // For now, just reset
+            }
+            if (distToMoon < moon.radius) {
+                // Landed/Crashed on Moon
+                resetShip(); // For now, just reset
+            }
+            
+            // E. Update HUD
+            let altitude = (distToEarth - earth.radius).toFixed(0);
+            let velocity = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy).toFixed(2);
+            hud.innerHTML = `Altitude (Earth): ${altitude} m<br>Velocity: ${velocity} m/s`;
+        }
+        
+        function resetShip() {
+            ship.x = 0;
+            ship.y = -EARTH_RADIUS - 50;
+            ship.vx = 0;
+            ship.vy = 0;
+            ship.angle = -Math.PI / 2;
         }
 
-        // --- 5. THE DRAW FUNCTION (The "Renderer") ---
+        // --- 7. DRAW FUNCTION (THE "RENDERER") ---
         function draw() {
-            // Clear the entire canvas with a black rectangle
+            // Clear the canvas
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Save the current canvas state
+            // --- CAMERA ---
+            // This is the magic! We move the *entire world*
+            // so the ship *appears* to be in the center.
             ctx.save();
+            
+            // Center the camera on the ship's position
+            camera.x = ship.x;
+            camera.y = ship.y;
+            
+            // Move the canvas origin to the center of the screen
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            // "Move" the world opposite to the camera's position
+            ctx.translate(-camera.x, -camera.y);
 
-            // Move the canvas "origin" to the ship's position and angle
+            // --- DRAW OBJECTS (from the world's perspective) ---
+            
+            // Draw Earth
+            ctx.beginPath();
+            ctx.arc(earth.x, earth.y, earth.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#3a86ff'; // Blue
+            ctx.fill();
+
+            // Draw Moon
+            ctx.beginPath();
+            ctx.arc(moon.x, moon.y, moon.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#8e9aaf'; // Grey
+            ctx.fill();
+
+            // Draw the Ship
+            // We have to translate/rotate *just* the ship
+            ctx.save();
             ctx.translate(ship.x, ship.y);
             ctx.rotate(ship.angle);
-
-            // Draw the ship's triangle
-            ctx.beginPath();
-            ctx.moveTo(15, 0);       // Nose
-            ctx.lineTo(-10, -8);     // Back-left
-            ctx.lineTo(-10, 8);      // Back-right
-            ctx.closePath();
-            ctx.strokeStyle = 'white'; // Outline color
-            ctx.lineWidth = 1;
-            ctx.stroke();
             
-            // Draw the thruster flame if thrusting
+            ctx.beginPath();
+            ctx.moveTo(15, 0); // Nose
+            ctx.lineTo(-10, -8); // Back-left
+            ctx.lineTo(-10, 8);  // Back-right
+            ctx.closePath();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1; // Thinner ship
+            ctx.stroke();
+
             if (ship.isThrusting) {
                 ctx.beginPath();
-                ctx.moveTo(-10, 0);     // Middle of the back
-                ctx.lineTo(-18, -5);    // Flame point 1
-                ctx.lineTo(-18, 5);     // Flame point 2
+                ctx.moveTo(-10, 0);
+                ctx.lineTo(-18, -5);
+                ctx.lineTo(-18, 5);
                 ctx.closePath();
-                ctx.fillStyle = 'orange'; // Flame color
+                ctx.fillStyle = 'orange';
                 ctx.fill();
             }
-
-            // Restore the canvas state
-            ctx.restore();
+            ctx.restore(); // Restore from ship's rotation/translation
+            
+            // --- END DRAWING OBJECTS ---
+            ctx.restore(); // Restore from camera translation
         }
 
-        // --- 6. THE GAME LOOP ---
-        // This function runs every frame, forever
+        // --- 8. GAME LOOP ---
         function gameLoop() {
-            update(); // 1. Update all game logic
-            draw();   // 2. Draw everything
-            
-            // Ask the browser to run this function again
-            // when it's ready for the next frame
+            update();
+            draw();
             requestAnimationFrame(gameLoop);
         }
 
-        // --- 7. START THE GAME ---
-        // Call the game loop for the first time
+        // Start the game!
         gameLoop();
 
     </script>
