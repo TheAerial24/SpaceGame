@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lite Spaceflight Sim - Phase 5 (HUD)</title>
+    <title>Lite Spaceflight Sim - Phase 5.1 (Final Fix)</title>
     <style>
         body, html {
             margin: 0;
@@ -78,8 +78,6 @@
             zoom: 0.0002
         };
         
-        // --- NEW: Global trajectory object ---
-        // We will store the path and orbital data here
         let trajectory = {
             path: [],
             apoapsis: 0,
@@ -131,15 +129,16 @@
             return dist; 
         }
 
+        // --- THIS IS THE FIXED FUNCTION ---
         function getGravityAccel(ghostShip, body) {
             const dx = body.x - ghostShip.x;
             const dy = body.y - ghostShip.y;
             const distSq = dx * dx + dy * dy;
 
-            // --- FIX FOR TRAJECTORY BUG ---
-            // Prevent NaN/Infinity if distance is (near) zero
-            if (distSq < 1.0) {
-                return { ax: 0, ay: 0 };
+            // --- THE REAL FIX ---
+            // If at the exact center, gravity is 0. Prevents divide-by-zero.
+            if (distSq === 0) {
+                return { ax: 0, ay: 0, dist: 0 };
             }
             // --- END FIX ---
             
@@ -148,8 +147,9 @@
             const ax = (dx / dist) * accel;
             const ay = (dy / dist) * accel;
             
-            return { ax, ay, dist }; // Also return dist for orbit calculation
+            return { ax, ay, dist };
         }
+        // ---------------------------------
 
         function checkLanding(ship, body, dist, dt) {
             // UNTOUCHED
@@ -193,8 +193,7 @@
             timeWarpIndex = 0;
         }
 
-        // --- NEW TRAJECTORY CALCULATION FUNCTION ---
-        // This runs the simulation and returns all data
+        // --- TRAJECTORY CALCULATION ---
         const PREDICTION_STEPS = 1000;
         const PREDICTION_STEP_TIME = 2;
 
@@ -211,6 +210,7 @@
             let minDist = Infinity;
 
             for (let i = 0; i < PREDICTION_STEPS; i++) {
+                // This now calls the FIXED getGravityAccel
                 let accelE = getGravityAccel(ghost, earth);
                 let accelM = getGravityAccel(ghost, moon);
                 
@@ -237,7 +237,7 @@
         }
         // -------------------------------------------
 
-        // --- 6. UPDATE FUNCTION (Refactored) ---
+        // --- 6. UPDATE FUNCTION (Untouched) ---
         function update(dt) {
             // UNTOUCHED Zoom
             if (keys['=']) camera.zoom *= 1.02;
@@ -286,7 +286,7 @@
                 checkLanding(ship, moon, distToMoon, dt);
             }
             
-            // --- NEW: Calculate trajectory and update HUD ---
+            // Calculate trajectory and update HUD (Untouched)
             let altitude, velocity, apText, peText;
 
             let distToEarthCenter = Math.sqrt(Math.pow(ship.x - earth.x, 2) + Math.pow(ship.y - earth.y, 2));
@@ -296,9 +296,8 @@
             if (ship.landedOn) {
                 apText = "Landed";
                 peText = "Landed";
-                trajectory.path = []; // Clear path when landed
+                trajectory.path = []; 
             } else {
-                // This is the big calculation
                 trajectory = calculateTrajectory(ship);
                 apText = `${trajectory.apoapsis.toFixed(0)} m`;
                 peText = `${trajectory.periapsis.toFixed(0)} m`;
@@ -309,16 +308,15 @@
                              Time Warp: ${timeWarpLevels[timeWarpIndex]}x`;
         }
         
-        // --- 7. DRAW FUNCTION (Refactored) ---
+        // --- 7. DRAW FUNCTION (Untouched) ---
         
-        // This function just DRAWS the path now, no simulation
         function drawTrajectory(ctx) {
             if (trajectory.path.length === 0) {
                 return;
             }
             
             ctx.beginPath();
-            ctx.moveTo(ship.x, ship.y); // Always start from the ship
+            ctx.moveTo(ship.x, ship.y); 
             for (const point of trajectory.path) {
                 ctx.lineTo(point.x, point.y);
             }
@@ -339,7 +337,6 @@
             camera.y = ship.y;
             ctx.translate(-camera.x, -camera.y);
             
-            // --- MODIFIED: Call the simpler draw function ---
             drawTrajectory(ctx);
             
             // Draw Earth (Untouched)
