@@ -223,6 +223,12 @@
         const MAX_ZOOM = 1.0;
         const MIN_ZOOM = 0.0000001;
 
+        // --- NEW: Parachute Constants ---
+        const PARACHUTE_DEPLOY_ALTITUDE_FT = 2500.0;
+        const PARACHUTE_DEPLOY_ALTITUDE_M = PARACHUTE_DEPLOY_ALTITUDE_FT * 0.3048; // = 762m
+        const PARACHUTE_TARGET_SPEED = 17.0; // m/s
+        const PARACHUTE_DRAG_FACTOR = 0.05; // Controls how fast it slows down
+
         // --- 3. GAME OBJECTS (Untouched) ---
         let ship = {}; 
         const earth = {
@@ -360,49 +366,40 @@
             }, 4000);
         }
 
-        // --- NEW: Function to safely get save data ---
+        // --- Function to safely get save data (Untouched) ---
         function getSaveState() {
             const saveString = localStorage.getItem(SAVE_KEY);
             if (saveString) {
                 try {
-                    // Try to parse the saved string
                     return JSON.parse(saveString);
                 } catch (e) {
-                    // If it's corrupted, return a new empty object
                     console.error("Could not parse save file, creating new one.", e);
                     return {};
                 }
             }
-            // If no save string exists, return a new empty object
             return {};
         }
 
-        // --- NEW: Function to save achievement data automatically ---
+        // --- Function to save achievement data automatically (Untouched) ---
         function saveAchievements() {
-            // 1. Get the current, valid save state
             let saveState = getSaveState();
             
-            // 2. Build the achievement state
             let achievementsState = {};
             for (const id in achievements) {
                 achievementsState[id] = achievements[id].unlocked;
             }
-
-            // 3. Update the save state with new achievement data
+            
             saveState.achievements = achievementsState;
             saveState.hasLandedOnMoon = hasLandedOnMoon;
 
-            // 4. Save back to localStorage
             localStorage.setItem(SAVE_KEY, JSON.stringify(saveState));
             console.log("Permanent achievement data saved!");
         }
 
-        // --- NEW: Function to load achievements on game start ---
+        // --- Function to load achievements on game start (Untouched) ---
         function loadAchievements() {
-            // 1. Get the current, valid save state
             const saveState = getSaveState();
                 
-            // 2. Load achievements
             if (saveState.achievements) {
                 for (const id in saveState.achievements) {
                     if (achievements[id]) {
@@ -411,15 +408,13 @@
                 }
             }
             
-            // 3. Load moon landing flag
             if (saveState.hasLandedOnMoon) {
                 hasLandedOnMoon = saveState.hasLandedOnMoon;
             }
             console.log("Permanent achievement data loaded!");
         }
 
-
-        // --- MODIFIED: Achievement Checking Function ---
+        // --- Achievement Checking Function (Untouched) ---
         function checkAchievements(ship, trajectory) {
             for (const id in achievements) {
                 const achievement = achievements[id];
@@ -428,7 +423,6 @@
                     if (achievement.check(ship, trajectory)) {
                         achievement.unlocked = true;
                         showNotification(achievement.name, achievement.description);
-                        // --- NEW: Automatically save when one is unlocked ---
                         saveAchievements(); 
                     }
                 }
@@ -459,17 +453,11 @@
             }
         }
 
-        // --- MODIFIED: Save/Load Functions ---
-        // SaveGame now ONLY saves the ship's position
+        // --- Save/Load Functions (Untouched) ---
         function saveGame() {
             if (ship.landedOn) {
-                // 1. Get existing save data
                 let saveState = getSaveState();
-                
-                // 2. Add/update the ship data
                 saveState.ship = ship;
-                
-                // 3. Save back to localStorage
                 localStorage.setItem(SAVE_KEY, JSON.stringify(saveState));
                 showNotification("Game Saved", "Your ship's position has been saved.");
             } else {
@@ -477,12 +465,9 @@
             }
         }
         
-        // LoadGame now ONLY loads the ship's position
         function loadGame() {
-            // 1. Get existing save data
             const saveState = getSaveState();
                 
-            // 2. Check if ship data exists
             if (saveState.ship) {
                 ship = saveState.ship;
                 
@@ -546,7 +531,7 @@
                 
                 if (totalVelocity > SAFE_LANDING_SPEED) {
                     console.log("CRASH! Speed: " + totalVelocity);
-                    resetShip(); // This will just reset the ship, not achievements
+                    resetShip(); 
                 } else {
                     landShip(ship, body);
                 }
@@ -566,13 +551,14 @@
             ship.angle = angleToBody + Math.PI / 2;
 
             if (body === moon) {
-                // Check if this is the first time landing
                 if (!hasLandedOnMoon) { 
                     hasLandedOnMoon = true;
-                    // --- NEW: Automatically save this flag ---
                     saveAchievements(); 
                 }
             }
+
+            // --- NEW: Reset parachute on landing ---
+            ship.parachuteActive = false;
         }
 
         // --- MODIFIED: resetShip ---
@@ -584,16 +570,14 @@
                 vy: 0,
                 angle: 0, 
                 isThrusting: false,
-                landedOn: null
+                landedOn: null,
+                parachuteActive: false // NEW: Reset parachute state
             };
             landShip(ship, earth); 
             timeWarpIndex = 0;
             historyLog = [];
             
-            // --- REMOVED ---
-            // The loop that reset achievements is GONE.
-            // `hasLandedOnMoon = false` is also GONE.
-            // Achievements are now persistent.
+            // Achievements are NOT reset
         }
 
         // --- TRAJECTORY CALCULATION (Untouched) ---
@@ -637,7 +621,7 @@
             };
         }
 
-        // --- 6. UPDATE FUNCTION (This is the fixed version) ---
+        // --- 6. UPDATE FUNCTION (MODIFIED) ---
         function update(dt) {
             // --- Camera logic (Untouched) ---
             if (!isMapView) {
@@ -648,21 +632,26 @@
                 camera.zoom = 0.000005;
             }
 
-            // --- Control logic ---
+            // --- NEW: Rotation Speed Logic ---
+            let currentRotationSpeed = SHIP_ROTATION_SPEED;
+            if (ship.parachuteActive) {
+                currentRotationSpeed = SHIP_ROTATION_SPEED / 2.0;
+            }
+
+            // --- Control logic (MODIFIED to use currentRotationSpeed) ---
             if (ship.landedOn) {
                 // LANDED CONTROLS
                 if (keys.ArrowLeft) {
-                    ship.angle -= (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
+                    ship.angle -= (currentRotationSpeed * Math.PI / 180) * dt;
                 }
                 if (keys.ArrowRight) {
-                    ship.angle += (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
+                    ship.angle += (currentRotationSpeed * Math.PI / 180) * dt;
                 }
                 
                 ship.isThrusting = false;
                 if (keys.ArrowUp) {
                     ship.landedOn = null; // Takeoff!
                     ship.isThrusting = true;
-                    // Apply initial thrust
                     const accel_x = Math.cos(ship.angle - Math.PI / 2) * SHIP_THRUST_ACCEL;
                     const accel_y = Math.sin(ship.angle - Math.PI / 2) * SHIP_THRUST_ACCEL;
                     ship.vx += accel_x * dt;
@@ -671,10 +660,10 @@
             } else {
                 // IN-FLIGHT CONTROLS
                 if (keys.ArrowLeft) {
-                    ship.angle -= (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
+                    ship.angle -= (currentRotationSpeed * Math.PI / 180) * dt;
                 }
                 if (keys.ArrowRight) {
-                    ship.angle += (SHIP_ROTATION_SPEED * Math.PI / 180) * dt;
+                    ship.angle += (currentRotationSpeed * Math.PI / 180) * dt;
                 }
                 ship.isThrusting = false;
                 if (keys.ArrowUp) {
@@ -687,20 +676,50 @@
                 }
             }
 
-            // --- PHYSICS & MOVEMENT (This logic is fixed) ---
+            // --- PHYSICS & MOVEMENT ---
             if (!ship.landedOn) {
+                // --- NEW: Check for Parachute Deployment ---
+                let distToEarthCenter = Math.sqrt(Math.pow(ship.x - earth.x, 2) + Math.pow(ship.y - earth.y, 2));
+                let altitudeEarth = distToEarthCenter - earth.radius;
+                
+                if (!ship.parachuteActive && altitudeEarth < PARACHUTE_DEPLOY_ALTITUDE_M && altitudeEarth > 0) {
+                    ship.parachuteActive = true;
+                    console.log("Parachute Deployed!");
+                }
+
+                // Apply Gravity (Untouched)
                 let distToEarth = applyGravity(ship, earth, dt);
                 let distToMoon = applyGravity(ship, moon, dt);
                 
+                // --- NEW: Apply Parachute Drag ---
+                if (ship.parachuteActive) {
+                    let currentSpeed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
+                    if (currentSpeed > PARACHUTE_TARGET_SPEED) {
+                        // This drag model creates a slowing force proportional to the difference
+                        // between current speed and target speed.
+                        let dragForce = (currentSpeed - PARACHUTE_TARGET_SPEED) * PARACHUTE_DRAG_FACTOR;
+                        
+                        // Apply drag opposite to the velocity vector
+                        let dragAx = (ship.vx / currentSpeed) * dragForce;
+                        let dragAy = (ship.vy / currentSpeed) * dragForce;
+                        
+                        ship.vx -= dragAx * dt;
+                        ship.vy -= dragAy * dt;
+                    }
+                }
+
+                // Apply Velocity (Untouched)
                 ship.x += ship.vx * dt;
                 ship.y += ship.vy * dt;
                 
+                // Check Landing (Untouched)
                 checkLanding(ship, earth, distToEarth, dt);
                 checkLanding(ship, moon, distToMoon, dt);
             }
             
             // --- HUD & TRAJECTORY ---
             let altitude, velocity, apText, peText;
+            // (We re-calculate distToEarthCenter here, which is fine)
             let distToEarthCenter = Math.sqrt(Math.pow(ship.x - earth.x, 2) + Math.pow(ship.y - earth.y, 2));
             altitude = (distToEarthCenter - earth.radius).toFixed(0);
             velocity = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy).toFixed(2);
@@ -715,7 +734,7 @@
                 peText = `${trajectory.periapsis.toFixed(0)} m`;
             }
             
-            // Check achievements
+            // Check achievements (Untouched)
             checkAchievements(ship, trajectory);
 
             // HUD Display (Untouched)
@@ -724,7 +743,7 @@
                              Time Warp: ${timeWarpLevels[timeWarpIndex]}x`;
         }
         
-        // --- 7. DRAW FUNCTION (Untouched) ---
+        // --- 7. DRAW FUNCTION (MODIFIED) ---
         
         function drawTrajectory(ctx) {
             if (trajectory.path.length === 0) {
@@ -740,6 +759,61 @@
             ctx.strokeStyle = 'rgba(255, 255, 250, 0.5)';
             ctx.lineWidth = 1 / camera.zoom;
             ctx.stroke();
+        }
+
+        // --- NEW: Parachute Draw Function ---
+        function drawParachute(ctx) {
+            if (!ship.parachuteActive) {
+                return;
+            }
+
+            ctx.save();
+            ctx.translate(ship.x, ship.y); // Go to ship's position
+
+            // Make parachute stream opposite to velocity vector
+            let currentSpeed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
+            let paraDrawAngle = ship.angle - Math.PI / 2.0; // Default if no speed
+            
+            if (currentSpeed > 1.0) {
+                // Angle of the velocity, plus 180 degrees (Math.PI) to point behind
+                paraDrawAngle = Math.atan2(ship.vy, ship.vx) + Math.PI;
+            }
+            
+            ctx.rotate(paraDrawAngle);
+
+            const paraHeight = 25;
+            const paraWidth = 15;
+            const canopyRadius = paraWidth * 0.8;
+            const canopyY = paraHeight;
+
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1 / camera.zoom;
+
+            // Shroud lines (from ship center)
+            ctx.beginPath();
+            ctx.moveTo(0, 0); // From ship center
+            ctx.lineTo(-paraWidth/2, canopyY - canopyRadius);
+            ctx.moveTo(0, 0);
+            ctx.lineTo(paraWidth/2, canopyY - canopyRadius);
+            ctx.stroke();
+
+            // Canopy
+            ctx.fillStyle = '#ff6600'; // Orange
+            ctx.beginPath();
+            ctx.arc(0, canopyY, canopyRadius, Math.PI, 0); // Semicircle
+            ctx.closePath();
+            ctx.fill();
+
+            // White stripes (Apollo style)
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.moveTo(0, canopyY);
+            // Draw a "pie slice"
+            ctx.arc(0, canopyY, canopyRadius, Math.PI + Math.PI/4, Math.PI + 3*Math.PI/4);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
         }
 
         function draw() {
@@ -772,7 +846,10 @@
             ctx.fillStyle = '#8e9aaf';
             ctx.fill();
 
-            // Draw the Ship
+            // --- NEW: Draw parachute *before* ship ---
+            drawParachute(ctx);
+
+            // Draw the Ship (Untouched)
             ctx.save();
             ctx.translate(ship.x, ship.y);
             ctx.rotate(ship.angle); 
@@ -797,7 +874,7 @@
             ctx.restore();
         }
 
-        // --- 8. GAME LOOP (TYPO FIXED) ---
+        // --- 8. GAME LOOP (Untouched) ---
         function gameLoop(timestamp) {
             
             if (timestamp - lastHistorySave > 100) {
@@ -818,8 +895,7 @@
             let steps = Math.min(100, Math.max(1, warpedDt / 0.016)); 
             let stepDt = warpedDt / steps;
             
-            // --- THIS IS THE FIX ---
-            // Changed "steps.length" to just "steps"
+            // This is the fixed loop
             for (let i = 0; i < steps; i++) {
                 update(stepDt);
             }
