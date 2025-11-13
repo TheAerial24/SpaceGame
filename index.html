@@ -228,8 +228,8 @@
         const PARACHUTE_TARGET_SPEED = 17.0; // m/s
         
         // --- Physics-based drag constant (Untouched) ---
-        const G_SURFACE_EARTH = GM_EARTH / (EARTH_RADIUS * EARTH_RADIUS); // = ~9.833
-        const PARACHUTE_DRAG_CONSTANT = G_SURFACE_EARTH / PARACHUTE_TARGET_SPEED; // = ~0.5784
+        const G_SURFACE_EARTH = GM_EARTH / (EARTH_RADIUS * EARTH_RADIUS); 
+        const PARACHUTE_DRAG_CONSTANT = G_SURFACE_EARTH / PARACHUTE_TARGET_SPEED; 
 
         // --- 3. GAME OBJECTS (Untouched) ---
         let ship = {}; 
@@ -308,7 +308,7 @@
 
         const SAVE_KEY = "sfs_lite_savegame";
 
-        // --- Achievement System (All Untouched) ---
+        // --- MODIFIED: Achievement System Definition ---
         const achievements = {
             'orbit': {
                 name: "Stable Orbit",
@@ -352,9 +352,58 @@
                 check: (ship, trajectory) => {
                     return hasLandedOnMoon && ship.landedOn === earth;
                 }
+            },
+            // --- 5 NEW ACHIEVEMENTS ---
+            'lunarFlyBy': {
+                name: "Lunar Fly-by",
+                description: "Pass within 10,000m of the Moon's surface without landing.",
+                unlocked: false,
+                check: (ship, trajectory) => {
+                    // Need to calculate distance to Moon
+                    let distToMoonCenter = Math.sqrt(Math.pow(ship.x - moon.x, 2) + Math.pow(ship.y - moon.y, 2));
+                    let altitudeMoon = distToMoonCenter - moon.radius;
+                    return !ship.landedOn && altitudeMoon < 10000;
+                }
+            },
+            'intoTheVoid': {
+                name: "Into the Void",
+                description: "Travel more than 2x the Moon's distance from Earth.",
+                unlocked: false,
+                check: (ship, trajectory) => {
+                    // MOON_DISTANCE is the semi-major axis, so 2x that.
+                    let distToEarthCenter = Math.sqrt(Math.pow(ship.x - earth.x, 2) + Math.pow(ship.y - earth.y, 2));
+                    return distToEarthCenter > (MOON_DISTANCE * 2);
+                }
+            },
+            'reEntry': {
+                name: "Atmospheric Re-entry",
+                description: "Set your periapsis on a re-entry course with Earth.",
+                unlocked: false,
+                check: (ship, trajectory) => {
+                    // Periapsis is altitude, so 0 is surface. < 0 is a crash.
+                    return !ship.landedOn && trajectory.periapsis < 0;
+                }
+            },
+            'timeTraveler': {
+                name: "Time Traveler",
+                description: "Engage the maximum time warp.",
+                unlocked: false,
+                check: (ship, trajectory) => {
+                    // timeWarpIndex is 0-based, length is 1-based.
+                    return timeWarpIndex === (timeWarpLevels.length - 1);
+                }
+            },
+            'missionControl': {
+                name: "Mission Control",
+                description: "Use the map view to survey your surroundings.",
+                unlocked: false,
+                check: (ship, trajectory) => {
+                    return isMapView;
+                }
             }
         };
 
+        // --- Notification Pop-up Function (Untouched) ---
         function showNotification(name, description) {
             if (notificationTimer) {
                 clearTimeout(notificationTimer);
@@ -367,6 +416,7 @@
             }, 4000);
         }
 
+        // --- Function to safely get save data (Untouched) ---
         function getSaveState() {
             const saveString = localStorage.getItem(SAVE_KEY);
             if (saveString) {
@@ -380,6 +430,7 @@
             return {};
         }
 
+        // --- Function to save achievement data automatically (Untouched) ---
         function saveAchievements() {
             let saveState = getSaveState();
             
@@ -395,6 +446,7 @@
             console.log("Permanent achievement data saved!");
         }
 
+        // --- Function to load achievements on game start (Untouched) ---
         function loadAchievements() {
             const saveState = getSaveState();
                 
@@ -412,12 +464,14 @@
             console.log("Permanent achievement data loaded!");
         }
 
+        // --- Achievement Checking Function (Untouched) ---
         function checkAchievements(ship, trajectory) {
             for (const id in achievements) {
                 const achievement = achievements[id];
                 
                 if (!achievement.unlocked) {
-                    if (achievement.check(ship, trajectory)) {
+                    // We pass all state variables to every check
+                    if (achievement.check(ship, trajectory)) { 
                         achievement.unlocked = true;
                         showNotification(achievement.name, achievement.description);
                         saveAchievements(); 
@@ -426,6 +480,7 @@
             }
         }
 
+        // --- Achievement Modal Function (Untouched) ---
         function toggleAchievementsModal(show) {
             if (show) {
                 achievementList.innerHTML = ''; // Clear old list
@@ -449,6 +504,7 @@
             }
         }
 
+        // --- Save/Load Functions (Untouched) ---
         function saveGame() {
             if (ship.landedOn) {
                 let saveState = getSaveState();
@@ -729,7 +785,7 @@
                              Time Warp: ${timeWarpLevels[timeWarpIndex]}x`;
         }
         
-        // --- 7. DRAW FUNCTION (MODIFIED) ---
+        // --- 7. DRAW FUNCTION (Untouched) ---
         
         function drawTrajectory(ctx) {
             if (trajectory.path.length === 0) {
@@ -747,7 +803,7 @@
             ctx.stroke();
         }
 
-        // --- MODIFIED: Parachute Draw Function (This is the fixed one) ---
+        // --- Parachute Draw Function (This is the fixed, locked one) ---
         function drawParachute(ctx) {
             if (!ship.parachuteActive) {
                 return;
