@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spaceflight Simulator Lite</title>
+    <title>Apollo</title>
     <style>
         body, html {
             margin: 0;
@@ -223,11 +223,11 @@
         const MAX_ZOOM = 1.0;
         const MIN_ZOOM = 0.0000001;
 
-        // --- NEW: Parachute Constants ---
+        // --- Parachute Constants (Untouched) ---
         const PARACHUTE_DEPLOY_ALTITUDE_FT = 2500.0;
         const PARACHUTE_DEPLOY_ALTITUDE_M = PARACHUTE_DEPLOY_ALTITUDE_FT * 0.3048; // = 762m
         const PARACHUTE_TARGET_SPEED = 17.0; // m/s
-        const PARACHUTE_DRAG_FACTOR = 0.05; // Controls how fast it slows down
+        const PARACHUTE_DRAG_FACTOR = 0.05; 
 
         // --- 3. GAME OBJECTS (Untouched) ---
         let ship = {}; 
@@ -255,8 +255,8 @@
         let historyLog = [];
         let lastHistorySave = 0;
 
-        // --- MODIFIED: Achievement Tracking Variable ---
-        let hasLandedOnMoon = false; // This is now loaded from localStorage
+        // --- Achievement Tracking Variable (Untouched) ---
+        let hasLandedOnMoon = false; 
 
         // --- 4. CONTROLS & TIME (Untouched) ---
         const keys = {
@@ -557,8 +557,9 @@
                 }
             }
 
-            // --- NEW: Reset parachute on landing ---
+            // --- NEW: Reset parachute flags on landing ---
             ship.parachuteActive = false;
+            ship.hasReachedDeployAltitude = false;
         }
 
         // --- MODIFIED: resetShip ---
@@ -571,7 +572,8 @@
                 angle: 0, 
                 isThrusting: false,
                 landedOn: null,
-                parachuteActive: false // NEW: Reset parachute state
+                parachuteActive: false, // NEW
+                hasReachedDeployAltitude: false // NEW
             };
             landShip(ship, earth); 
             timeWarpIndex = 0;
@@ -632,13 +634,13 @@
                 camera.zoom = 0.000005;
             }
 
-            // --- NEW: Rotation Speed Logic ---
+            // --- Rotation Speed Logic (Untouched) ---
             let currentRotationSpeed = SHIP_ROTATION_SPEED;
             if (ship.parachuteActive) {
                 currentRotationSpeed = SHIP_ROTATION_SPEED / 2.0;
             }
 
-            // --- Control logic (MODIFIED to use currentRotationSpeed) ---
+            // --- Control logic (Untouched) ---
             if (ship.landedOn) {
                 // LANDED CONTROLS
                 if (keys.ArrowLeft) {
@@ -678,11 +680,17 @@
 
             // --- PHYSICS & MOVEMENT ---
             if (!ship.landedOn) {
-                // --- NEW: Check for Parachute Deployment ---
+                // --- MODIFIED: Parachute Deployment Logic ---
                 let distToEarthCenter = Math.sqrt(Math.pow(ship.x - earth.x, 2) + Math.pow(ship.y - earth.y, 2));
                 let altitudeEarth = distToEarthCenter - earth.radius;
                 
-                if (!ship.parachuteActive && altitudeEarth < PARACHUTE_DEPLOY_ALTITUDE_M && altitudeEarth > 0) {
+                // 1. Check if we have passed the deploy altitude on the way up
+                if (altitudeEarth > PARACHUTE_DEPLOY_ALTITUDE_M) {
+                    ship.hasReachedDeployAltitude = true;
+                }
+
+                // 2. Deploy parachute only if we are on the way down
+                if (ship.hasReachedDeployAltitude && !ship.parachuteActive && altitudeEarth < PARACHUTE_DEPLOY_ALTITUDE_M && altitudeEarth > 0) {
                     ship.parachuteActive = true;
                     console.log("Parachute Deployed!");
                 }
@@ -691,15 +699,11 @@
                 let distToEarth = applyGravity(ship, earth, dt);
                 let distToMoon = applyGravity(ship, moon, dt);
                 
-                // --- NEW: Apply Parachute Drag ---
+                // Apply Parachute Drag (Untouched)
                 if (ship.parachuteActive) {
                     let currentSpeed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
                     if (currentSpeed > PARACHUTE_TARGET_SPEED) {
-                        // This drag model creates a slowing force proportional to the difference
-                        // between current speed and target speed.
                         let dragForce = (currentSpeed - PARACHUTE_TARGET_SPEED) * PARACHUTE_DRAG_FACTOR;
-                        
-                        // Apply drag opposite to the velocity vector
                         let dragAx = (ship.vx / currentSpeed) * dragForce;
                         let dragAy = (ship.vy / currentSpeed) * dragForce;
                         
@@ -719,7 +723,6 @@
             
             // --- HUD & TRAJECTORY ---
             let altitude, velocity, apText, peText;
-            // (We re-calculate distToEarthCenter here, which is fine)
             let distToEarthCenter = Math.sqrt(Math.pow(ship.x - earth.x, 2) + Math.pow(ship.y - earth.y, 2));
             altitude = (distToEarthCenter - earth.radius).toFixed(0);
             velocity = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy).toFixed(2);
@@ -761,7 +764,7 @@
             ctx.stroke();
         }
 
-        // --- NEW: Parachute Draw Function ---
+        // --- MODIFIED: Parachute Draw Function ---
         function drawParachute(ctx) {
             if (!ship.parachuteActive) {
                 return;
@@ -770,46 +773,42 @@
             ctx.save();
             ctx.translate(ship.x, ship.y); // Go to ship's position
 
-            // Make parachute stream opposite to velocity vector
-            let currentSpeed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
-            let paraDrawAngle = ship.angle - Math.PI / 2.0; // Default if no speed
-            
-            if (currentSpeed > 1.0) {
-                // Angle of the velocity, plus 180 degrees (Math.PI) to point behind
-                paraDrawAngle = Math.atan2(ship.vy, ship.vx) + Math.PI;
-            }
-            
-            ctx.rotate(paraDrawAngle);
+            // --- MODIFIED: Rotate with the ship's "up" direction ---
+            ctx.rotate(ship.angle - Math.PI / 2.0);
 
+            // --- MODIFIED: Draw "above" the ship's nose ---
             const paraHeight = 25;
             const paraWidth = 15;
             const canopyRadius = paraWidth * 0.8;
-            const canopyY = paraHeight;
+            const shipNoseY = -SHIP_HEIGHT / 2; // Top of the ship triangle
+            const canopyBottomY = shipNoseY - paraHeight; // Y-coord where canopy starts
+            const canopyCenterY = canopyBottomY + canopyRadius; // Y-coord for the arc center
 
             ctx.strokeStyle = 'white';
             ctx.lineWidth = 1 / camera.zoom;
 
-            // Shroud lines (from ship center)
+            // Shroud lines
             ctx.beginPath();
-            ctx.moveTo(0, 0); // From ship center
-            ctx.lineTo(-paraWidth/2, canopyY - canopyRadius);
-            ctx.moveTo(0, 0);
-            ctx.lineTo(paraWidth/2, canopyY - canopyRadius);
+            ctx.moveTo(0, shipNoseY); // Start from ship nose
+            ctx.lineTo(-paraWidth/2, canopyBottomY);
+            ctx.moveTo(0, shipNoseY);
+            ctx.lineTo(paraWidth/2, canopyBottomY);
             ctx.stroke();
 
             // Canopy
             ctx.fillStyle = '#ff6600'; // Orange
             ctx.beginPath();
-            ctx.arc(0, canopyY, canopyRadius, Math.PI, 0); // Semicircle
+            // --- MODIFIED: Flipped arc to draw the top semi-circle ---
+            ctx.arc(0, canopyCenterY, canopyRadius, Math.PI, 0); 
             ctx.closePath();
             ctx.fill();
 
             // White stripes (Apollo style)
             ctx.fillStyle = 'white';
             ctx.beginPath();
-            ctx.moveTo(0, canopyY);
+            ctx.moveTo(0, canopyCenterY);
             // Draw a "pie slice"
-            ctx.arc(0, canopyY, canopyRadius, Math.PI + Math.PI/4, Math.PI + 3*Math.PI/4);
+            ctx.arc(0, canopyCenterY, canopyRadius, Math.PI + Math.PI/4, Math.PI + 3*Math.PI/4);
             ctx.closePath();
             ctx.fill();
 
@@ -846,7 +845,7 @@
             ctx.fillStyle = '#8e9aaf';
             ctx.fill();
 
-            // --- NEW: Draw parachute *before* ship ---
+            // Draw parachute *before* ship so ship is on top
             drawParachute(ctx);
 
             // Draw the Ship (Untouched)
@@ -895,7 +894,6 @@
             let steps = Math.min(100, Math.max(1, warpedDt / 0.016)); 
             let stepDt = warpedDt / steps;
             
-            // This is the fixed loop
             for (let i = 0; i < steps; i++) {
                 update(stepDt);
             }
